@@ -1,6 +1,6 @@
 {
   "name": "@cross/workers",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "exports": "./mod.ts",
   "imports": {
     "@cross/runtime": "jsr:@cross/runtime@^1.2.1",
