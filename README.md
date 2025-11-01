@@ -13,7 +13,16 @@ onAllComplete callbacks.
 
 ## Installation
 
-...
+```bash
+# Deno
+deno add jsr:@cross/workers
+
+# Node.js
+npx jsr add @cross/workers
+
+# Bun
+bunx jsr add @cross/workers
+```
 
 ## Quick Start
 
