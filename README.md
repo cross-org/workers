@@ -1,4 +1,5 @@
 # @cross/workers
+
 [![JSR Version](https://jsr.io/badges/@cross/workers)](https://jsr.io/@cross/workers)
 
 A cross-runtime worker pool implementation for Node.js, Deno, Bun, and Browser

@@ -3,7 +3,7 @@
  * Browser-compatible worker using esm.sh imports
  */
 
-import { setupWorker } from "https://esm.sh/jsr/@cross/workers@0.1.2";
+import { setupWorker } from "https://esm.sh/jsr/@cross/workers@0.1.3";
 
 console.log("🔧 [Web Worker] Worker thread initialized");
 

@@ -6,7 +6,7 @@
  */
 
 // deno-lint-ignore no-import-prefix
-import { WorkerPool } from "jsr:@cross/workers@^0.1.2";
+import { WorkerPool } from "jsr:@cross/workers@^0.1.3";
 
 interface FactorialJob {
   number: number;

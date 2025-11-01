@@ -3,7 +3,7 @@
  */
 
 // deno-lint-ignore no-import-prefix
-import { setupWorker } from "jsr:@cross/workers@^0.1.2";
+import { setupWorker } from "jsr:@cross/workers@^0.1.3";
 
 interface ProcessingJob {
   id: string;

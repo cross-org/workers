@@ -3,6 +3,7 @@
  * Handles the differences between Node.js worker_threads and Web Workers
  */
 
+import { CurrentRuntime, Runtime } from "@cross/runtime";
 import type { WorkerMessageHandler } from "./types.ts";
 
 /**
@@ -24,7 +25,6 @@ import type { WorkerMessageHandler } from "./types.ts";
  * ```
  */
 export function setupWorker(handler: WorkerMessageHandler): void {
-  // Create message handler function
   const handleMessage = (data: { seq: number; payload: unknown }) => {
     try {
       const result = handler(data);
@@ -42,6 +42,7 @@ export function setupWorker(handler: WorkerMessageHandler): void {
 
   const messageQueue: unknown[] = [];
   let postMessageFn: ((msg: unknown) => void) | null = null;
+  let isNodeJsWorker = false;
 
   const processMessage = (data: unknown) => {
     const result = handleMessage(data as { seq: number; payload: unknown });
@@ -50,58 +51,69 @@ export function setupWorker(handler: WorkerMessageHandler): void {
     }
   };
 
-  // Check if self exists (Browser/Deno/Bun)
   // @ts-ignore - self exists in worker context
   const hasSelf = typeof self !== "undefined";
 
-  if (hasSelf) {
-    // Set up self.onmessage immediately
-    // @ts-ignore - self exists in worker context
-    postMessageFn = (msg: unknown) => self.postMessage(msg);
-    // @ts-ignore - self exists in worker context
-    self.onmessage = (event: MessageEvent) => {
-      processMessage(event.data);
-    };
-  }
-
   (async () => {
-    try {
-      // @ts-ignore - dynamic import for Node.js
-      const workerThreads = await import("node:worker_threads");
-      // @ts-ignore - parentPort exists in Node.js worker context
-      const { parentPort } = workerThreads;
-      if (parentPort) {
-        postMessageFn = (msg: unknown) => {
-          try {
-            parentPort.postMessage(msg);
-          } catch {
-            // Ignore errors if parentPort is closed
-          }
-        };
+    if (CurrentRuntime === Runtime.Node) {
+      try {
+        const workerThreads = await import("node:worker_threads");
+        const { parentPort } = workerThreads;
+        if (parentPort) {
+          isNodeJsWorker = true;
 
-        for (const msg of messageQueue) {
-          processMessage(msg);
-        }
-        messageQueue.length = 0;
-
-        parentPort.on("message", (data: unknown) => {
-          processMessage(data);
-        });
-        return;
-      }
-    } catch (err) {
-      if (!hasSelf) {
-        try {
-          if (typeof console !== "undefined" && console.error) {
-            console.error(
-              "[setupWorker] Failed to set up Node.js worker:",
-              err,
-            );
+          if (hasSelf) {
+            // @ts-ignore - self exists in worker context
+            self.onmessage = null;
           }
-        } catch {
-          // Ignore console errors
+
+          postMessageFn = (msg: unknown) => {
+            try {
+              parentPort.postMessage(msg);
+            } catch {
+              // Ignore errors if parentPort is closed
+            }
+          };
+
+          for (const msg of messageQueue) {
+            processMessage(msg);
+          }
+          messageQueue.length = 0;
+
+          parentPort.on("message", (data: unknown) => {
+            processMessage(data);
+          });
+          return;
         }
+      } catch (_error) {
+        // Fall back to self.onmessage if worker_threads unavailable
       }
     }
   })();
+
+  if (hasSelf) {
+    // @ts-ignore - self exists in worker context
+    postMessageFn = (msg: unknown) => self.postMessage(msg);
+
+    // @ts-ignore - self exists in worker context
+    self.onmessage = (event: MessageEvent) => {
+      // Guard handles race condition where messages arrive before async Node.js check completes
+      if (!isNodeJsWorker) {
+        processMessage(event.data);
+      } else {
+        // Queue messages that arrived via self.onmessage to be processed by parentPort
+        messageQueue.push(event.data);
+      }
+    };
+  } else {
+    try {
+      if (typeof console !== "undefined" && console.error) {
+        console.error(
+          "[setupWorker] No worker API available (neither self nor parentPort)",
+        );
+      }
+    } catch {
+      // Ignore
+    }
+  }
 }
