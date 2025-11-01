@@ -25,11 +25,12 @@ import type { WorkerMessageHandler } from "./types.ts";
  * ```
  */
 export function setupWorker(handler: WorkerMessageHandler): void {
-  const handleMessage = (data: { seq: number; payload: unknown }) => {
+  const handleMessage = async (data: { seq: number; payload: unknown }) => {
     try {
       const result = handler(data);
-      if (result !== undefined) {
-        return result;
+      const resolvedResult = result instanceof Promise ? await result : result;
+      if (resolvedResult !== undefined) {
+        return resolvedResult;
       }
     } catch (error) {
       return {
@@ -44,8 +45,10 @@ export function setupWorker(handler: WorkerMessageHandler): void {
   let postMessageFn: ((msg: unknown) => void) | null = null;
   let isNodeJsWorker = false;
 
-  const processMessage = (data: unknown) => {
-    const result = handleMessage(data as { seq: number; payload: unknown });
+  const processMessage = async (data: unknown) => {
+    const result = await handleMessage(
+      data as { seq: number; payload: unknown },
+    );
     if (result !== undefined && postMessageFn) {
       postMessageFn(result);
     }
@@ -76,7 +79,7 @@ export function setupWorker(handler: WorkerMessageHandler): void {
           };
 
           for (const msg of messageQueue) {
-            processMessage(msg);
+            await processMessage(msg);
           }
           messageQueue.length = 0;
 
