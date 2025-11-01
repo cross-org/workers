@@ -86,3 +86,22 @@ const flushInOrder = async () => {
 
 - `csv_streaming/main.ts` - Main example demonstrating order preservation
 - `csv_streaming/worker.ts` - CSV batch parsing worker
+
+### Browser Example
+
+Interactive browser-based factorial calculator using Web Workers:
+
+```bash
+# Example to serve via Deno
+deno run --allow-net --allow-read jsr:@std/http/file-server examples/browser_factorial --port 8000
+```
+
+Then open `http://localhost:8000` in your browser.
+
+**Files:**
+
+- `browser_factorial/index.html` - Interactive HTML page with embedded script
+- `browser_factorial/worker.js` - Worker implementation for browser
+
+**Note:** This example must be served over HTTP/HTTPS (not `file://`) because
+browsers require this for Web Workers.

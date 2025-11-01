@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worker Pool Browser Example</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        margin-top: 0;
+        color: #333;
+      }
+      .input-group {
+        margin: 20px 0;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #555;
+      }
+      input {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin: 20px 0;
+        padding: 12px;
+        background: #e7f3ff;
+        border-left: 4px solid #007bff;
+        border-radius: 4px;
+        display: none;
+      }
+      .status.show {
+        display: block;
+      }
+      .results {
+        margin-top: 20px;
+      }
+      .result-item {
+        padding: 12px;
+        margin: 8px 0;
+        background: #f8f9fa;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .result-item.completed {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+      }
+      .result-number {
+        font-weight: 600;
+        color: #333;
+      }
+      .result-value {
+        font-family: monospace;
+        color: #666;
+        word-break: break-all;
+      }
+      .summary {
+        margin-top: 20px;
+        padding: 15px;
+        background: #fff3cd;
+        border-radius: 4px;
+        border-left: 4px solid #ffc107;
+      }
+      .error {
+        color: #dc3545;
+        background: #f8d7da;
+        border-left-color: #dc3545;
+      }
+      .worker-active {
+        color: #28a745;
+        font-weight: 600;
+      }
+      .worker-info {
+        margin: 15px 0;
+        padding: 10px;
+        background: #f0f0f0;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🧮 Worker Pool Factorial Calculator</h1>
+      <p>
+        Calculate factorials in parallel using worker threads. Enter numbers
+        separated by commas.
+      </p>
+
+      <div class="input-group">
+        <label for="numbers">Numbers to calculate (comma-separated):</label>
+        <input
+          type="text"
+          id="numbers"
+          value="10, 15, 20, 25, 30, 35, 40, 45"
+          placeholder="e.g., 10, 15, 20"
+        >
+      </div>
+
+      <div class="input-group">
+        <label for="workers">Number of workers:</label>
+        <input
+          type="number"
+          id="workers"
+          value="4"
+          min="1"
+          max="8"
+        >
+      </div>
+
+      <button id="calculateBtn">Calculate Factorials</button>
+      <button id="clearBtn">Clear Results</button>
+
+      <div id="status" class="status"></div>
+
+      <div
+        id="workerInfo"
+        style="margin: 15px 0; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 14px"
+      >
+        <strong>🔍 Worker Status:</strong>
+        <div id="workerStatus">Not initialized</div>
+        <div style="margin-top: 8px; font-size: 12px; color: #666">
+          💡 <strong>Tip:</strong> Open DevTools (F12) → Sources → Threads to
+          see active Web Workers
+        </div>
+      </div>
+
+      <div id="results" class="results"></div>
+
+      <div id="summary" class="summary" style="display: none"></div>
+    </div>
+
+    <script type="module">
+      import {
+        getCPUCount,
+        WorkerPool,
+      } from "https://esm.sh/jsr/@cross/workers@0.1.2";
+
+      const numbersInput = document.getElementById("numbers");
+      const workersInput = document.getElementById("workers");
+      const calculateBtn = document.getElementById("calculateBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const statusDiv = document.getElementById("status");
+      const resultsDiv = document.getElementById("results");
+      const summaryDiv = document.getElementById("summary");
+      const workerStatusDiv = document.getElementById("workerStatus");
+
+      let pool = null;
+      let activeJobs = 0;
+      let completedJobs = 0;
+
+      // Show status message
+      function showStatus(message, isError = false) {
+        statusDiv.textContent = message;
+        statusDiv.className = `status show ${isError ? "error" : ""}`;
+      }
+
+      // Clear status
+      function clearStatus() {
+        statusDiv.className = "status";
+      }
+
+      // Format large numbers
+      function formatNumber(num) {
+        if (num > 1e15) {
+          return num.toExponential(2);
+        }
+        return num.toLocaleString();
+      }
+
+      // Update worker status display
+      function updateWorkerStatus() {
+        if (pool) {
+          const inflight = pool.inflightCount;
+          const total = parseInt(workersInput.value, 10) || 4;
+          workerStatusDiv.innerHTML = `
+          <span class="worker-active">⚡ ${total} Workers Active</span> | 
+          📊 Jobs: ${completedJobs} completed, ${inflight} in-flight
+        `;
+        }
+      }
+
+      // Clear results
+      function clearResults() {
+        resultsDiv.innerHTML = "";
+        summaryDiv.style.display = "none";
+        clearStatus();
+        workerStatusDiv.textContent = "Not initialized";
+        activeJobs = 0;
+        completedJobs = 0;
+      }
+
+      // Calculate factorials
+      async function calculateFactorials() {
+        try {
+          calculateBtn.disabled = true;
+          clearResults();
+
+          const numbersStr = numbersInput.value.trim();
+          const numbers = numbersStr.split(",").map((n) =>
+            parseInt(n.trim(), 10)
+          ).filter((n) => !isNaN(n));
+
+          if (numbers.length === 0) {
+            showStatus("Please enter at least one valid number", true);
+            calculateBtn.disabled = false;
+            return;
+          }
+
+          const workerCount = parseInt(workersInput.value, 10) || 4;
+
+          showStatus(`Initializing ${workerCount} workers...`);
+          workerStatusDiv.innerHTML =
+            `<span class="worker-active">⚙️ Creating ${workerCount} Web Workers...</span>`;
+          console.log(
+            `🔧 [Worker Pool] Initializing ${workerCount} Web Workers...`,
+          );
+
+          // Create worker pool
+          pool = new WorkerPool({
+            workers: workerCount,
+            moduleUrl: new URL("./worker.js", import.meta.url),
+          });
+
+          const results = [];
+          let errorCount = 0;
+          activeJobs = 0;
+          completedJobs = 0;
+
+          pool.onResult = (result) => {
+            const data = result.payload;
+            results.push(data);
+            completedJobs++;
+            activeJobs = pool.inflightCount;
+
+            console.log(
+              `✅ [Worker] Job ${result.seq} completed in worker thread: Factorial(${data.number}) = ${
+                formatNumber(data.factorial)
+              }`,
+            );
+            updateWorkerStatus();
+
+            // Display result immediately
+            const resultDiv = document.createElement("div");
+            resultDiv.className = "result-item";
+            resultDiv.id = `result-${data.number}`;
+            resultDiv.innerHTML = `
+            <span class="result-number">Factorial(${data.number})</span>
+            <span class="result-value">${
+              formatNumber(data.factorial)
+            }</span>
+          `;
+            resultsDiv.appendChild(resultDiv);
+          };
+
+          pool.onError = (error, seq) => {
+            errorCount++;
+            activeJobs = pool.inflightCount;
+            console.error(
+              `❌ [Worker] Job ${seq || "?"} failed in worker thread:`,
+              error,
+            );
+            updateWorkerStatus();
+
+            const errorDiv = document.createElement("div");
+            errorDiv.className = "result-item error";
+            errorDiv.innerHTML = `
+            <span class="result-number">Job ${seq || "?"}</span>
+            <span class="result-value">Error: ${
+              error.message || error
+            }</span>
+          `;
+            resultsDiv.appendChild(errorDiv);
+          };
+
+          await pool.init();
+          console.log(
+            `✅ [Worker Pool] ${workerCount} Web Workers initialized successfully`,
+          );
+          console.log(
+            `💡 Open DevTools (F12) → Sources → Threads to inspect workers`,
+          );
+          workerStatusDiv.innerHTML =
+            `<span class="worker-active">✅ ${workerCount} Web Workers Active</span>`;
+
+          showStatus(
+            `Submitting ${numbers.length} calculations to workers...`,
+          );
+
+          // Submit all jobs
+          for (let i = 0; i < numbers.length; i++) {
+            await pool.post({
+              seq: i,
+              payload: { number: numbers[i] },
+            });
+            activeJobs = pool.inflightCount;
+            console.log(
+              `📤 [Worker Pool] Job ${i} posted to worker (${activeJobs} in-flight)`,
+            );
+            updateWorkerStatus();
+          }
+
+          showStatus("Processing in worker threads...");
+
+          // Wait for completion
+          await pool.waitForCompletion();
+
+          // Sort results
+          results.sort((a, b) => a.number - b.number);
+
+          // Mark completed items
+          results.forEach((result) => {
+            const item = document.getElementById(
+              `result-${result.number}`,
+            );
+            if (item) {
+              item.classList.add("completed");
+            }
+          });
+
+          // Show summary
+          summaryDiv.style.display = "block";
+          summaryDiv.innerHTML = `
+          <strong>Summary:</strong><br>
+          ✓ Successfully calculated: ${results.length} / ${numbers.length}<br>
+          ${errorCount > 0 ? `✗ Errors: ${errorCount}<br>` : ""}
+          ⏱️ All calculations completed!
+        `;
+
+          showStatus(
+            `✓ Completed! Calculated ${results.length} factorials.`,
+          );
+          console.log(
+            `🎉 [Worker Pool] All ${results.length} jobs completed!`,
+          );
+
+          // Clean up
+          workerStatusDiv.innerHTML =
+            `<span>🔄 Closing ${workerCount} workers...</span>`;
+          await pool.close(true);
+          console.log(`🔒 [Worker Pool] All workers closed`);
+          workerStatusDiv.innerHTML = "Workers closed";
+          pool = null;
+          activeJobs = 0;
+          completedJobs = 0;
+        } catch (error) {
+          showStatus(`Error: ${error.message}`, true);
+          console.error(error);
+        } finally {
+          calculateBtn.disabled = false;
+        }
+      }
+
+      // Initialize CPU count display
+      (async () => {
+        try {
+          const cpuCount = await getCPUCount();
+          const suggestion = document.createElement("p");
+          suggestion.style.marginTop = "10px";
+          suggestion.style.fontSize = "14px";
+          suggestion.style.color = "#666";
+          suggestion.textContent =
+            `💡 Your system has ${cpuCount} CPU cores. Recommended: ${cpuCount} workers for CPU-bound tasks.`;
+          workersInput.parentElement.appendChild(suggestion);
+        } catch (error) {
+          // Ignore CPU count errors
+        }
+      })();
+
+      // Event listeners
+      calculateBtn.addEventListener("click", calculateFactorials);
+      clearBtn.addEventListener("click", clearResults);
+
+      // Allow Enter key to trigger calculation
+      numbersInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          calculateFactorials();
+        }
+      });
+    </script>
+  </body>
+</html>
