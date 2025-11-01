@@ -1,0 +1,11 @@
+{
+  "name": "@cross/workers",
+  "version": "0.1.2",
+  "exports": "./mod.ts",
+  "imports": {
+    "@cross/runtime": "jsr:@cross/runtime@^1.2.1"
+  },
+  "publish": {
+    "exclude": ["examples/**"]
+  }
+}

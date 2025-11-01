@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@cross/runtime@^1.2.1": "1.2.1"
+  },
+  "jsr": {
+    "@cross/runtime@1.2.1": {
+      "integrity": "f462fcf2fd678f9073291b4e55209b90f58c8d508764a84205d178abdcf22fc9"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@cross/runtime@^1.2.1"
+    ]
+  }
+}
